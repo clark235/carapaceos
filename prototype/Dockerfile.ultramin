@@ -1,0 +1,28 @@
+# CarapaceOS Ultra-Minimal Prototype
+# Goal: Absolute minimum for running a Node.js agent
+# Target: < 50MB compressed
+
+FROM alpine:3.19
+
+# Single layer install - bare minimum
+RUN apk add --no-cache \
+    nodejs-current=21.6.2-r0 \
+    bash \
+    git \
+    curl \
+    ca-certificates && \
+    # Clean up package cache
+    rm -rf /var/cache/apk/* /tmp/*
+
+# Create agent user and workspace
+RUN adduser -D -h /agent agent && \
+    mkdir -p /agent/workspace && \
+    chown -R agent:agent /agent
+
+WORKDIR /agent/workspace
+USER agent
+
+# Smoke test
+RUN node --version && git --version
+
+ENTRYPOINT ["/bin/bash"]

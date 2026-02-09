@@ -1,0 +1,40 @@
+# CarapaceOS Prototype v0.1
+# Goal: Minimal image capable of running an AI agent (OpenClaw-like)
+# Base: Alpine Linux (smallest mainstream distro)
+
+FROM alpine:3.19
+
+# Layer 1: Core runtime
+# These are the absolute minimum for Node.js-based agents
+RUN apk add --no-cache \
+    nodejs-current \
+    npm \
+    bash \
+    coreutils \
+    git \
+    curl \
+    ca-certificates \
+    openssh-client
+
+# Layer 2: Development tools (for agents that need to build/compile)
+RUN apk add --no-cache \
+    build-base \
+    python3 \
+    py3-pip
+
+# Layer 3: Agent workspace
+RUN mkdir -p /agent/workspace && \
+    adduser -D -h /agent agent && \
+    chown -R agent:agent /agent
+
+WORKDIR /agent/workspace
+USER agent
+
+# Verify core tools work
+RUN node --version && \
+    npm --version && \
+    git --version && \
+    bash --version | head -1
+
+# Default: bash shell (agent will spawn from here)
+CMD ["bash"]
