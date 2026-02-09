@@ -6,12 +6,11 @@ FROM alpine:3.19
 
 # Single layer install - bare minimum
 RUN apk add --no-cache \
-    nodejs-current=21.6.2-r0 \
+    nodejs-current \
     bash \
     git \
     curl \
     ca-certificates && \
-    # Clean up package cache
     rm -rf /var/cache/apk/* /tmp/*
 
 # Create agent user and workspace
