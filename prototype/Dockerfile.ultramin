@@ -24,4 +24,5 @@ USER agent
 # Smoke test
 RUN node --version && git --version
 
+# Default entrypoint: bash (accepts -c for commands)
 ENTRYPOINT ["/bin/bash"]

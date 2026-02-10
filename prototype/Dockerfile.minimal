@@ -37,4 +37,4 @@ RUN node --version && \
     bash --version | head -1
 
 # Default: bash shell (agent will spawn from here)
-CMD ["bash"]
+ENTRYPOINT ["/bin/bash"]
