@@ -27,9 +27,30 @@ docker pull ghcr.io/clark235/carapaceos:ultramin
 # Run an agent workspace
 docker run -it ghcr.io/clark235/carapaceos:ultramin
 
-# Or with a mounted workspace
+# Or run the built-in agent demo
+docker run --rm ghcr.io/clark235/carapaceos:minimal -c "node prototype/openclaw-agent-demo.js"
+
+# Mount your own workspace
 docker run -it -v $(pwd):/agent/workspace ghcr.io/clark235/carapaceos:ultramin
 ```
+
+### Demo Agent
+
+CarapaceOS includes a fully functional demo agent that showcases real AI agent operations:
+
+```bash
+# Run the demo to see an agent create a project, manage git, and generate reports
+docker run --rm ghcr.io/clark235/carapaceos:minimal -c "node prototype/openclaw-agent-demo.js"
+```
+
+The demo agent will:
+- Analyze the system environment
+- Create a Node.js project with proper structure
+- Initialize a Git repository with commits
+- Generate performance reports
+- Log all operations
+
+Perfect for validating that your AI agents will run smoothly in CarapaceOS.
 
 ## Image Variants
 

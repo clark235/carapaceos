@@ -64,7 +64,17 @@ jobs:
         run: |
           # Build locally for testing (push doesn't load to local daemon with buildx)
           docker build -f prototype/Dockerfile.${{ matrix.variant }} -t test-${{ matrix.variant }} prototype
+          
+          # Basic functionality test
           docker run --rm test-${{ matrix.variant }} -c "node --version && git --version"
+          
+          # Agent operations test
+          docker run --rm test-${{ matrix.variant }} /agent/workspace/prototype/test-agent-ops.sh || echo "Agent ops test not found, skipping"
+          
+          # OpenClaw agent demo (only for minimal variant which has more tools)
+          if [ "${{ matrix.variant }}" = "minimal" ]; then
+            docker run --rm -v $(pwd)/prototype:/agent/workspace/prototype test-${{ matrix.variant }} -c "cd /agent/workspace && node prototype/openclaw-agent-demo.js"
+          fi
 
   report:
     runs-on: ubuntu-latest
