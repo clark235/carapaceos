@@ -1,102 +1,69 @@
-# CarapaceOS 🦞
+# 🦞 CarapaceOS
 
-*The protective shell for AI agents.*
+**Minimal Linux for AI Agents** — A lightweight Alpine-based VM image purpose-built for running AI agent frameworks like OpenClaw.
 
-A minimal container image optimized for running AI coding agents — secure, lightweight, and purpose-built.
+## What Is This?
 
-## Why CarapaceOS?
+CarapaceOS is a bootable QEMU virtual machine image that provides:
 
-Standard container images are built for humans. They include:
-- Package managers with thousands of packages
-- Documentation, man pages, locales
-- Tools agents never use
-
-CarapaceOS strips everything down to exactly what an AI agent needs:
-- Node.js runtime
-- Git for code operations
-- curl for HTTP
-- Bash for shell commands
-- Nothing else
+- **Alpine Linux 3.21** base (~180MB image)
+- **Node.js 22**, npm, git, curl, jq pre-installed  
+- **Dedicated `agent` user** with workspace at `/home/agent/workspace`
+- **Cloud-init** for zero-touch provisioning
+- **SSH access** with key-based auth
+- **OpenClaw bootstrap** script included
+- Boots in **~25 seconds** with KVM
 
 ## Quick Start
 
 ```bash
-# Pull the ultramin image (smallest)
-docker pull ghcr.io/clark235/carapaceos:ultramin
+# 1. Build the image
+cd vm-image
+pip3 install pycdlib  # for seed ISO creation
+bash build-rootfs.sh  # downloads Alpine cloud image, creates seed
+python3 create-seed.py
 
-# Run an agent workspace
-docker run -it ghcr.io/clark235/carapaceos:ultramin
+# 2. Boot
+./boot.sh
 
-# Or run the built-in agent demo
-docker run --rm ghcr.io/clark235/carapaceos:minimal -c "node prototype/openclaw-agent-demo.js"
+# 3. SSH in (default user: agent)
+ssh -p 2222 agent@localhost
 
-# Mount your own workspace
-docker run -it -v $(pwd):/agent/workspace ghcr.io/clark235/carapaceos:ultramin
+# 4. Install OpenClaw
+bash ~/workspace/bootstrap.sh
 ```
 
-### Demo Agent
+## Requirements
 
-CarapaceOS includes a fully functional demo agent that showcases real AI agent operations:
+- QEMU with KVM support
+- Python 3 + pycdlib (for seed ISO)
+- ~500MB disk space
 
-```bash
-# Run the demo to see an agent create a project, manage git, and generate reports
-docker run --rm ghcr.io/clark235/carapaceos:minimal -c "node prototype/openclaw-agent-demo.js"
+## Architecture
+
 ```
-
-The demo agent will:
-- Analyze the system environment
-- Create a Node.js project with proper structure
-- Initialize a Git repository with commits
-- Generate performance reports
-- Log all operations
-
-Perfect for validating that your AI agents will run smoothly in CarapaceOS.
-
-## Image Variants
-
-| Variant | Contents | Target Size |
-|---------|----------|-------------|
-| `ultramin` | Node.js, Git, curl, Bash | < 50MB |
-| `minimal` | Above + npm, SSH, build tools | < 120MB |
-
-## Features
-
-- **Minimal footprint** — < 50MB compressed for ultramin
-- **Non-root by default** — Runs as `agent` user
-- **Agent-optimized** — Pre-configured workspace at `/agent/workspace`
-- **Fast startup** — No init systems, no daemons
-- **Security-focused** — Minimal attack surface
-
-## Building
-
-```bash
-# Local build (requires Docker)
-./prototype/build.sh
-
-# Azure build (no local Docker needed)
-./prototype/azure-build.sh
+vm-image/
+├── build-rootfs.sh    # Main image builder
+├── create-seed.py     # Cloud-init seed ISO creator (pycdlib)
+├── boot.sh            # QEMU launch script
+├── test-boot.sh       # Automated boot + SSH validation test
+├── build/
+│   └── cidata/        # Cloud-init configuration
+│       ├── meta-data
+│       └── user-data  # Packages, users, security, bootstrap
+└── cache/             # Downloaded Alpine base images
 ```
 
 ## Status
 
-🏗️ **Prototype phase** — Dockerfiles created, CI pending
+- ✅ Bootable QEMU image (KVM)
+- ✅ Cloud-init provisioning (agent user, tools, SSH)
+- ✅ Automated boot test (test-boot.sh)
+- ✅ OpenClaw bootstrap script
+- 🔲 GitHub Actions CI boot test
+- 🔲 Pre-built images (GHCR)
+- 🔲 ARM64 support
 
-### Completed
-- [x] Package analysis and sizing
-- [x] Dockerfile.ultramin (< 50MB target)
-- [x] Dockerfile.minimal (< 120MB target)
-- [x] Build scripts (local + Azure)
-- [x] GitHub Actions workflow
-- [x] Agent operations test suite
+## License
 
-### Next Steps
-- [ ] Create GitHub repo
-- [ ] First successful CI build
-- [ ] Publish to GHCR
-- [ ] Validate with real OpenClaw agent
-
-## Related
-
-- Designed for [OpenClaw](https://github.com/openclaw/openclaw) agents
-- See [AgentWeb](../agentweb/) for the browser layer
-- Named after the lobster's protective exoskeleton
+MIT

@@ -2,3 +2,9 @@ cache/
 build/
 *.qcow2
 *.raw
+build/test_key
+build/test_key.pub
+build/boot.log
+build/qemu.pid
+build/seed.iso
+build/seed.img

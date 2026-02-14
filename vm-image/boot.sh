@@ -4,7 +4,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IMAGE="$SCRIPT_DIR/carapaceos.qcow2"
-SEED="$SCRIPT_DIR/build/seed.img"
+SEED="$SCRIPT_DIR/build/seed.iso"
 
 if [ ! -f "$IMAGE" ]; then
     echo "❌ No image found. Run build first."
@@ -18,7 +18,7 @@ fi
 
 exec qemu-system-x86_64 \
     -drive file="$IMAGE",if=virtio,format=qcow2 \
-    -drive file="$SEED",if=virtio,format=raw \
+    -cdrom "$SEED" \
     -m 512 \
     -nographic \
     -netdev user,id=net0,hostfwd=tcp::2222-:22 \
