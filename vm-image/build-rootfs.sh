@@ -42,85 +42,14 @@ instance-id: carapaceos-001
 local-hostname: carapaceos
 EOF
 
-# User-data (cloud-init)
-cat > "$BUILD_DIR/cidata/user-data" << 'EOF'
-#cloud-config
+# User-data (cloud-init) — use template to avoid heredoc escaping issues
+TEST_KEY="$BUILD_DIR/test_key"
+if [ ! -f "$TEST_KEY" ]; then
+    ssh-keygen -t ed25519 -f "$TEST_KEY" -N "" -C "carapaceos-test" >/dev/null 2>&1
+fi
+SSH_PUBKEY=$(cat "${TEST_KEY}.pub")
 
-hostname: carapaceos
-
-# Resize root partition to fill disk
-growpart:
-  mode: auto
-  devices: ['/']
-resize_rootfs: true
-
-# Users
-users:
-  - name: agent
-    shell: /bin/bash
-    groups: [wheel]
-    lock_passwd: false
-    # password: "agent" (hashed)
-    passwd: $6$rounds=4096$randomsalt$KcZk8VxQ8h8V8r8K8x8Y8z8A8b8C8d8E8f8G8h8I8j8K8l8M8n8O8p8Q8r8S8t8U8v8W8x8Y8z8A
-    ssh_authorized_keys: []
-    sudo: ALL=(ALL) NOPASSWD:ALL
-
-# Packages
-packages:
-  - nodejs
-  - npm  
-  - git
-  - curl
-  - bash
-  - jq
-  - openssh-server
-
-# Write files
-write_files:
-  - path: /etc/carapaceos-version
-    content: "0.1.0-alpha\n"
-  
-  - path: /etc/motd
-    content: |
-      🦞 CarapaceOS 0.1.0-alpha
-      Minimal Linux for AI Agents
-      
-      Workspace: /home/agent/workspace
-      Run 'agent-audit' to check environment health
-  
-  - path: /home/agent/.profile
-    owner: agent:agent
-    content: |
-      export PATH="$HOME/.npm-global/bin:$HOME/workspace/node_modules/.bin:$PATH"
-      export AGENT_WORKSPACE="$HOME/workspace"
-      export CARAPACEOS_VERSION="$(cat /etc/carapaceos-version 2>/dev/null || echo dev)"
-      cd "$AGENT_WORKSPACE" 2>/dev/null || true
-  
-  - path: /home/agent/.npmrc
-    owner: agent:agent
-    content: |
-      prefix=/home/agent/.npm-global
-
-# Run commands after boot
-runcmd:
-  - mkdir -p /home/agent/workspace /home/agent/.npm-global
-  - chown -R agent:agent /home/agent
-  # Copy agent-audit if available
-  - |
-    if [ -f /opt/carapaceos/agent-audit.js ]; then
-      cp /opt/carapaceos/agent-audit.js /home/agent/workspace/
-      chown agent:agent /home/agent/workspace/agent-audit.js
-    fi
-  # Security hardening
-  - sed -i 's/#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-  - rc-service sshd restart || true
-  # Signal that setup is complete
-  - echo "✅ CarapaceOS agent environment ready" > /run/carapaceos-ready
-  - echo "CARAPACEOS_READY" > /dev/ttyS0
-
-# Final message
-final_message: "🦞 CarapaceOS ready after $UPTIME seconds"
-EOF
+sed "s|__SSH_PUBKEY__|${SSH_PUBKEY}|" "$SCRIPT_DIR/user-data.template" > "$BUILD_DIR/cidata/user-data"
 
 # Create seed ISO using genisoimage or mkisofs
 SEED_ISO="$BUILD_DIR/seed.iso"

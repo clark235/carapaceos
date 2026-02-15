@@ -1,0 +1,98 @@
+#cloud-config
+
+hostname: carapaceos
+ssh_pwauth: true
+
+# Resize root partition to fill disk
+growpart:
+  mode: auto
+  devices: ['/']
+resize_rootfs: true
+
+# Fix sqlite-libs before packages install (Node.js needs 3.48+)
+bootcmd:
+  - apk upgrade sqlite-libs
+
+# Users
+users:
+  - name: agent
+    shell: /bin/bash
+    groups: [wheel]
+    lock_passwd: false
+    passwd: $6$ZPlMVFbq54Hgrcjd$p5kELFciynM05vAQp1pMExgT/yx6LLu6C/HZK7Uqk/HlCMkhPLOFMAV.CodEzh.ya2WEdBnnJaskYehhvANap0
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+# Packages
+packages:
+  - nodejs
+  - npm
+  - git
+  - curl
+  - bash
+  - jq
+  - sudo
+  - openssh-server
+  # Build tools for native npm modules (node-llama-cpp etc.)
+  - cmake
+  - make
+  - g++
+
+# Write files
+write_files:
+  - path: /etc/carapaceos-version
+    content: "0.2.0-alpha\n"
+
+  - path: /etc/motd
+    content: |
+      🦞 CarapaceOS 0.2.0-alpha
+      Minimal Linux for AI Agents
+
+      Workspace: /home/agent/workspace
+      Run 'agent-audit' to check environment health
+
+  - path: /home/agent/.npmrc
+    owner: agent:agent
+    content: |
+      prefix=/home/agent/.npm-global
+
+# Run commands after boot
+runcmd:
+  - mkdir -p /home/agent/workspace /home/agent/.npm-global
+  # Create .profile (runcmd avoids cloud-init $ interpolation issues)
+  - |
+    cat > /home/agent/.profile << 'PROFILE'
+    export PATH="$HOME/.npm-global/bin:$HOME/workspace/node_modules/.bin:$PATH"
+    export AGENT_WORKSPACE="$HOME/workspace"
+    export CARAPACEOS_VERSION="$(cat /etc/carapaceos-version 2>/dev/null || echo dev)"
+    cd "$AGENT_WORKSPACE" 2>/dev/null || true
+    PROFILE
+  # Create bootstrap script
+  - |
+    cat > /home/agent/workspace/bootstrap.sh << 'BOOTSTRAP'
+    #!/bin/bash
+    set -euo pipefail
+    echo "🦞 CarapaceOS OpenClaw Bootstrap"
+    [ "$(whoami)" != "agent" ] && { echo "❌ Run as agent"; exit 1; }
+    mkdir -p ~/.npm-global
+    npm config set prefix ~/.npm-global 2>/dev/null || true
+    export PATH="$HOME/.npm-global/bin:$PATH"
+    echo "📦 Installing OpenClaw..."
+    npm install -g openclaw --ignore-scripts
+    command -v openclaw &>/dev/null || { echo "❌ Install failed"; exit 1; }
+    echo "✅ OpenClaw $(openclaw --version 2>/dev/null || echo '?') installed"
+    echo "🎉 Run: openclaw setup"
+    BOOTSTRAP
+    chmod +x /home/agent/workspace/bootstrap.sh
+  - chown -R agent:agent /home/agent
+  # Security hardening
+  - sed -i 's/#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - rc-service sshd restart || true
+  # Signal that setup is complete
+  - echo "✅ CarapaceOS agent environment ready" > /run/carapaceos-ready
+  - echo "CARAPACEOS_READY" > /dev/ttyS0
+
+# Final message
+final_message: "🦞 CarapaceOS ready after $UPTIME seconds"

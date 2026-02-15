@@ -56,10 +56,11 @@ vm-image/
 
 ## Status
 
-- ✅ Bootable QEMU image (KVM)
+- ✅ Bootable QEMU image (KVM) — ~25s boot, 43MB RAM
 - ✅ Cloud-init provisioning (agent user, tools, SSH)
 - ✅ Automated boot test (test-boot.sh)
-- ✅ OpenClaw bootstrap script
+- ✅ OpenClaw 2026.2.14 validated running inside VM
+- ✅ Build tools (cmake, make, g++) for native npm modules
 - 🔲 GitHub Actions CI boot test
 - 🔲 Pre-built images (GHCR)
 - 🔲 ARM64 support
