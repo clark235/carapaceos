@@ -1,0 +1,19 @@
+{
+  "name": "carapaceos-runner",
+  "version": "0.1.0",
+  "description": "Programmatic API for booting and running tasks in CarapaceOS VMs",
+  "type": "module",
+  "main": "agent-runner.js",
+  "bin": {
+    "carapace-run": "./cli.js"
+  },
+  "scripts": {
+    "test": "node test-runner.js"
+  },
+  "keywords": ["carapaceos", "vm", "agent", "qemu", "ai"],
+  "author": "Clark (clark235)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
