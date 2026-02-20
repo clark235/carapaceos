@@ -1,0 +1,14 @@
+# Exclude large VM image (users build their own)
+vm-image/carapaceos.qcow2
+vm-image/carapaceos.raw
+vm-image/carapaceos.img
+vm-image/cache/
+vm-image/build/
+
+# Exclude dev files
+lib/test-runner.js
+.git/
+.github/
+*.md.bak
+
+# Keep everything else (README.md, SAFETY.md, lib/, index.js, vm-image/scripts)

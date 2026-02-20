@@ -1,0 +1,56 @@
+{
+  "name": "carapaceos-runner",
+  "version": "0.2.0",
+  "description": "Programmatic API for booting and running tasks in isolated CarapaceOS VMs. Lightweight Alpine Linux substrate for AI agents.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "carapace-run": "./lib/cli.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./runner": "./lib/agent-runner.js"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "vm-image/build-image.sh",
+    "vm-image/create-seed-iso.js",
+    "vm-image/user-data.template",
+    "README.md",
+    "SAFETY.md"
+  ],
+  "scripts": {
+    "test": "node lib/test-runner.js",
+    "build-image": "bash vm-image/build-image.sh",
+    "prepublishOnly": "node -e \"import('./index.js').then(m => console.log('export check OK:', Object.keys(m)))\""
+  },
+  "keywords": [
+    "carapaceos",
+    "qemu",
+    "vm",
+    "virtual-machine",
+    "ai-agent",
+    "sandbox",
+    "isolation",
+    "alpine-linux",
+    "agent-substrate",
+    "openClaw"
+  ],
+  "author": "Clark (https://github.com/clark235)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clark235/carapaceos.git"
+  },
+  "homepage": "https://github.com/clark235/carapaceos#readme",
+  "bugs": {
+    "url": "https://github.com/clark235/carapaceos/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": ["linux", "darwin"],
+  "peerDependencies": {},
+  "dependencies": {}
+}
