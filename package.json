@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "bin": {
-    "carapace-run": "./lib/cli.js"
+    "carapace-run": "./lib/cli.js",
+    "carapace-doctor": "./lib/doctor.js"
   },
   "exports": {
     ".": "./index.js",
@@ -18,10 +19,12 @@
     "vm-image/create-seed-iso.js",
     "vm-image/user-data.template",
     "README.md",
-    "SAFETY.md"
+    "SAFETY.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "node lib/test-runner.js",
+    "doctor": "node lib/doctor.js",
     "build-image": "bash vm-image/build-image.sh",
     "prepublishOnly": "node -e \"import('./index.js').then(m => console.log('export check OK:', Object.keys(m)))\""
   },
