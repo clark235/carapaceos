@@ -24,7 +24,13 @@ jobs:
         run: '[ -f package-lock.json ] && npm ci || true'
 
       - name: Verify package exports
-        run: node -e "import('./index.js').then(m => { console.log('exports OK:', Object.keys(m)); })"
+        run: node -e "import('./index.js').then(m => { console.log('exports OK:', Object.keys(m)); if (!m.createSeedISO) throw new Error('createSeedISO missing'); })"
+
+      - name: Run seed-iso unit tests (23 tests, no QEMU needed)
+        run: node lib/test-seed-iso.js
+
+      - name: Run doctor check
+        run: node lib/doctor.js || true  # warn only in CI
 
       - name: Check CLI entrypoint
         run: node lib/cli.js --help || true  # cli may exit 0 or 1 for --help

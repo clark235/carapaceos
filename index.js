@@ -20,3 +20,4 @@
  */
 
 export { CarapaceRunner, runIsolated } from './lib/agent-runner.js';
+export { createSeedISO, buildISO } from './lib/seed-iso.js';

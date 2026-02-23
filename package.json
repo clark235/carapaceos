@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./index.js",
-    "./runner": "./lib/agent-runner.js"
+    "./runner": "./lib/agent-runner.js",
+    "./seed-iso": "./lib/seed-iso.js",
+    "./doctor": "./lib/doctor.js"
   },
   "files": [
     "index.js",
@@ -24,6 +26,7 @@
   ],
   "scripts": {
     "test": "node lib/test-runner.js",
+    "test:unit": "node lib/test-seed-iso.js",
     "doctor": "node lib/doctor.js",
     "build-image": "bash vm-image/build-image.sh",
     "prepublishOnly": "node -e \"import('./index.js').then(m => console.log('export check OK:', Object.keys(m)))\""
