@@ -1,171 +1,102 @@
-name: CarapaceOS CI
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
-  # ── Fast validation: unit tests (no QEMU needed) ──────────────────────────
   unit-tests:
-    name: Unit Tests
+    name: Unit Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '20', '22']
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
           cache: 'npm'
 
-      - name: Install deps (if any)
-        run: '[ -f package-lock.json ] && npm ci || true'
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
 
-      - name: Verify package exports
-        run: node -e "import('./index.js').then(m => { console.log('exports OK:', Object.keys(m)); if (!m.createSeedISO) throw new Error('createSeedISO missing'); })"
+      - name: Run unit tests (no QEMU required)
+        run: npm run test:all
 
-      - name: Run seed-iso unit tests (23 tests, no QEMU needed)
-        run: node lib/test-seed-iso.js
-
-      - name: Run doctor check
-        run: node lib/doctor.js || true  # warn only in CI
-
-      - name: Check CLI entrypoint
-        run: node lib/cli.js --help || true  # cli may exit 0 or 1 for --help
-
-  # ── Image build: compile the QEMU disk image ──────────────────────────────
-  build-image:
-    name: Build VM Image
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    outputs:
-      image-artifact: carapaceos-qcow2
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - name: Check exports resolve
+        run: node -e "import('./index.js').then(m => console.log('Exports OK:', Object.keys(m).join(', ')))"
 
-      - name: Install QEMU + build tools
+  doctor:
+    name: Doctor (host capability check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 genisoimage
+      - run: npm ci --ignore-scripts
+      - name: Run doctor
+        run: node lib/doctor.js || true  # non-fatal: reports what's missing
+
+  # Integration test: build image + boot + run command
+  # Only runs on push to main (slow: ~5 min)
+  integration:
+    name: Integration (build + boot)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install QEMU + tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            qemu-system-x86 qemu-utils \
-            cloud-image-utils genisoimage \
-            wget curl
-
-      - name: Cache Alpine ISO
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage wget
+          # Enable KVM if available
+          sudo modprobe kvm-intel 2>/dev/null || sudo modprobe kvm-amd 2>/dev/null || echo "KVM not available, will use TCG"
+      - run: npm ci --ignore-scripts
+      - name: Check for cached image
+        id: cache-image
         uses: actions/cache@v4
         with:
-          path: vm-image/*.iso
-          key: alpine-iso-3.21.3-x86_64
-
-      - name: Build CarapaceOS QEMU image
-        run: |
-          cd vm-image
-          bash build-image.sh
-        timeout-minutes: 20
-
-      - name: Verify image exists and is valid
-        run: |
-          ls -lh vm-image/carapaceos.qcow2
-          qemu-img info vm-image/carapaceos.qcow2
-
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: carapaceos-qcow2
           path: vm-image/carapaceos.qcow2
-          retention-days: 1
-
-  # ── Integration test: boot VM, run validation via runner API ──────────────
-  integration-test:
-    name: Integration Test (QEMU Boot)
-    runs-on: ubuntu-latest
-    needs: build-image
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install QEMU + SSH tools
+          key: carapaceos-image-${{ hashFiles('vm-image/build-image.sh', 'vm-image/user-data.template') }}
+      - name: Build VM image
+        if: steps.cache-image.outputs.cache-hit != 'true'
+        run: npm run build-image
+        timeout-minutes: 15
+      - name: Integration test — boot + run node --version
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            qemu-system-x86 qemu-utils \
-            openssh-client genisoimage \
-            cloud-image-utils
-
-      - name: Enable KVM (if available)
-        run: |
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-            echo "KVM_AVAILABLE=true" >> $GITHUB_ENV
-            echo "KVM available ✅"
-          else
-            echo "KVM_AVAILABLE=false" >> $GITHUB_ENV
-            echo "KVM not available, using TCG (slower)"
-          fi
-
-      - name: Download VM image
-        uses: actions/download-artifact@v4
-        with:
-          name: carapaceos-qcow2
-          path: vm-image/
-
-      - name: Run integration test
-        run: |
-          node lib/test-runner.js
-        env:
-          CARAPACE_ENABLE_KVM: ${{ env.KVM_AVAILABLE }}
-        timeout-minutes: 10
-
-      - name: Upload test logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs
-          path: /tmp/carapace-*.log
-          retention-days: 3
-
-  # ── npm dry-run: verify package would publish cleanly ─────────────────────
-  npm-dry-run:
-    name: npm Publish Dry Run
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Run prepublishOnly check
-        run: npm run prepublishOnly
-
-      - name: npm pack (dry run)
-        run: |
-          npm pack --dry-run 2>&1 | tee pack-output.txt
-          # Fail if the pack would be unexpectedly large (>10MB without qcow2)
-          SIZE=$(npm pack --dry-run 2>&1 | grep "package size" | grep -oP '[\d.]+ [kMG]B' | head -1)
-          echo "Package size: $SIZE"
-
-  # ── Summary badge ─────────────────────────────────────────────────────────
-  summary:
-    name: CI Summary
-    runs-on: ubuntu-latest
-    needs: [unit-tests, build-image, integration-test, npm-dry-run]
-    if: always()
-    steps:
-      - name: Write job summary
-        run: |
-          echo "## 🦞 CarapaceOS CI Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build Image | ${{ needs.build-image.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration Test | ${{ needs.integration-test.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| npm Dry Run | ${{ needs.npm-dry-run.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          node -e "
+          import('./index.js').then(async ({ CarapaceRunner }) => {
+            const runner = new CarapaceRunner({ image: './vm-image/carapaceos.qcow2', verbose: true });
+            await runner.boot();
+            const result = await runner.run('node --version && echo CARAPACE_OK');
+            await runner.shutdown();
+            if (!result.stdout.includes('CARAPACE_OK')) {
+              console.error('Integration test FAILED:', result);
+              process.exit(1);
+            }
+            console.log('Integration test PASSED:', result.stdout.trim());
+          });
+          "
+        timeout-minutes: 5

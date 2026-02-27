@@ -6,13 +6,17 @@
   "main": "index.js",
   "bin": {
     "carapace-run": "./lib/cli.js",
-    "carapace-doctor": "./lib/doctor.js"
+    "carapace-doctor": "./lib/doctor.js",
+    "carapace-fetch": "./lib/image-fetch.js"
   },
   "exports": {
     ".": "./index.js",
     "./runner": "./lib/agent-runner.js",
+    "./warm-pool": "./lib/warm-pool.js",
     "./seed-iso": "./lib/seed-iso.js",
-    "./doctor": "./lib/doctor.js"
+    "./doctor": "./lib/doctor.js",
+    "./control-server": "./lib/control-server.js",
+    "./image-fetch": "./lib/image-fetch.js"
   },
   "files": [
     "index.js",
@@ -27,8 +31,14 @@
   "scripts": {
     "test": "node lib/test-runner.js",
     "test:unit": "node lib/test-seed-iso.js",
+    "test:pool": "node lib/test-warm-pool.js",
+    "test:control": "node lib/test-control-server.js",
+    "test:all": "node lib/test-seed-iso.js && node lib/test-warm-pool.js && node lib/test-control-server.js",
     "doctor": "node lib/doctor.js",
     "build-image": "bash vm-image/build-image.sh",
+    "fetch-image": "node lib/image-fetch.js",
+    "fetch-image:check": "node lib/image-fetch.js --check",
+    "serve": "node lib/control-server.js",
     "prepublishOnly": "node -e \"import('./index.js').then(m => console.log('export check OK:', Object.keys(m)))\""
   },
   "keywords": [

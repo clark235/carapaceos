@@ -20,4 +20,7 @@
  */
 
 export { CarapaceRunner, runIsolated } from './lib/agent-runner.js';
+export { WarmPool, getGlobalPool, stopGlobalPool } from './lib/warm-pool.js';
 export { createSeedISO, buildISO } from './lib/seed-iso.js';
+export { ControlServer } from './lib/control-server.js';
+// Image fetcher: use CLI `carapace-fetch` or script `npm run fetch-image`

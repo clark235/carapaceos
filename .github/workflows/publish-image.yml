@@ -1,0 +1,147 @@
+name: Publish VM Image to GHCR
+
+# Runs on release tags (v0.2.0, etc.) or manual trigger
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (e.g. v0.2.0 or latest)'
+        required: false
+        default: 'latest'
+      force_rebuild:
+        description: 'Force rebuild even if image is cached'
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: clark235/carapaceos
+
+jobs:
+  build-and-push:
+    name: Build VM Image + Push to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ github.event.inputs.tag || 'latest' }}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "full_image=${REGISTRY}/${IMAGE_NAME}:${TAG}" >> $GITHUB_OUTPUT
+          echo "Building image with tag: ${TAG}"
+
+      - name: Install QEMU + tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage wget
+
+      - name: Cache VM image build
+        id: cache-image
+        if: ${{ !github.event.inputs.force_rebuild }}
+        uses: actions/cache@v4
+        with:
+          path: vm-image/carapaceos.qcow2
+          key: carapaceos-image-${{ hashFiles('vm-image/build-image.sh', 'vm-image/user-data.template') }}-v2
+
+      - name: Build VM image
+        if: steps.cache-image.outputs.cache-hit != 'true'
+        run: |
+          echo "🦞 Building CarapaceOS VM image..."
+          npm run build-image
+          echo "✅ Build complete: $(ls -lh vm-image/carapaceos.qcow2)"
+
+      - name: Compress image for distribution
+        run: |
+          echo "📦 Compressing image..."
+          # Use qemu-img to create a compressed copy (sparsely written = smaller upload)
+          qemu-img convert -c -O qcow2 vm-image/carapaceos.qcow2 vm-image/carapaceos-dist.qcow2
+          ls -lh vm-image/carapaceos.qcow2 vm-image/carapaceos-dist.qcow2
+
+      - name: Generate image manifest
+        run: |
+          SHA256=$(sha256sum vm-image/carapaceos-dist.qcow2 | awk '{print $1}')
+          SIZE=$(stat -c%s vm-image/carapaceos-dist.qcow2)
+          cat > vm-image/manifest.json << EOF
+          {
+            "name": "carapaceos",
+            "version": "${{ steps.meta.outputs.tag }}",
+            "arch": "x86_64",
+            "format": "qcow2",
+            "sha256": "${SHA256}",
+            "size_bytes": ${SIZE},
+            "alpine_version": "3.21",
+            "node_version": "22",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runner_package": "carapaceos-runner",
+            "runner_version": "$(node -e "import('./package.json', { assert: { type: 'json' } }).then(m => console.log(m.default.version))" 2>/dev/null || cat package.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")"
+          }
+          EOF
+          cat vm-image/manifest.json
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image as OCI artifact to GHCR
+        uses: oras-project/setup-oras@v1
+
+      - name: Push via ORAS
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}"
+
+          cd vm-image
+
+          # Push qcow2 image + manifest as OCI artifact
+          oras push "${IMAGE}" \
+            --artifact-type "application/vnd.carapaceos.vm" \
+            carapaceos-dist.qcow2:application/vnd.carapaceos.qcow2 \
+            manifest.json:application/vnd.carapaceos.manifest+json
+
+          echo "✅ Pushed: ${IMAGE}"
+
+          # Also tag as 'latest' on releases
+          if [ "${{ github.event_name }}" = "release" ]; then
+            LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            oras tag "${IMAGE}" "${LATEST}"
+            echo "✅ Tagged as latest: ${LATEST}"
+          fi
+
+      - name: Upload image as release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            vm-image/carapaceos-dist.qcow2
+            vm-image/manifest.json
+
+      - name: Summary
+        run: |
+          echo "## 🦞 CarapaceOS Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ steps.meta.outputs.full_image }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | ${{ steps.meta.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size | $(ls -lh vm-image/carapaceos-dist.qcow2 | awk '{print $5}') |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pull with:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "oras pull ${{ steps.meta.outputs.full_image }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

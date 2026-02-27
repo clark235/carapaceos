@@ -89,6 +89,43 @@ console.log('Output:', result.stdout);
 await runner.shutdown(); // VM destroyed, overlay image discarded
 ```
 
+### Warm Pool — eliminate boot latency
+
+Pre-boot a pool of VMs so agents get clean environments instantly (no 25s wait):
+
+```javascript
+import { WarmPool } from 'carapaceos-runner/warm-pool';
+
+// Start a pool of 3 warm VMs
+const pool = new WarmPool({
+  image: './carapaceos.qcow2',
+  size: 3,           // pre-boot 3 VMs
+  memory: '512',
+});
+await pool.start();  // blocks until first VM is warm
+
+// Instantly acquire a pre-booted VM — no boot wait!
+const vm = await pool.acquire();
+const result = await vm.run('node --version');
+
+// Release destroys the VM (isolation guarantee) and refills pool in background
+await pool.release(vm);
+
+// At shutdown
+await pool.stop();
+```
+
+Pool status:
+
+```javascript
+console.log(pool.statusLine());
+// [WarmPool] warm=2 booting=1 active=1 waiters=0
+console.log(pool.stats());
+// { warm: 2, booting: 1, active: 1, total: 4, waiters: 0, targetSize: 3, maxSize: 8 }
+```
+
+**Performance:** Boot time amortized to ~0ms per task (vs 25s without pooling).
+
 ### Task pipelines
 
 ```javascript
@@ -195,6 +232,46 @@ Measured on Linux/KVM (Intel i7):
 
 ---
 
+## HTTP Control Server
+
+Run CarapaceOS as a local daemon that any agent (or HTTP client) can talk to:
+
+```bash
+# Start the control server (auto-manages a warm pool)
+node lib/control-server.js ./vm-image/carapaceos.qcow2 --port=7375 --pool=2
+# → [ControlServer] Listening on http://127.0.0.1:7375
+```
+
+### REST API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check + pool stats |
+| GET | `/metrics` | Prometheus-style metrics |
+| GET | `/vms` | List active VMs |
+| POST | `/vms/acquire` | Acquire a warm VM → `{ vmId }` |
+| POST | `/vms/:id/run` | Run command in VM → `{ stdout, stderr, code }` |
+| POST | `/vms/:id/pipeline` | Run multiple commands in sequence |
+| POST | `/vms/:id/release` | Destroy VM + refill pool |
+| GET | `/pool/status` | Pool stats |
+| POST | `/pool/resize` | Resize warm pool |
+
+```javascript
+// Any HTTP client can now use isolated VMs
+const { vmId } = await fetch('http://127.0.0.1:7375/vms/acquire', { method: 'POST' }).then(r => r.json());
+
+const result = await fetch(`http://127.0.0.1:7375/vms/${vmId}/run`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ command: 'node --version' }),
+}).then(r => r.json());
+// → { stdout: 'v22.15.1', stderr: '', code: 0, duration: 155 }
+
+await fetch(`http://127.0.0.1:7375/vms/${vmId}/release`, { method: 'POST' });
+```
+
+---
+
 ## Status
 
 - ✅ Bootable QEMU image (KVM + TCG fallback)
@@ -204,6 +281,8 @@ Measured on Linux/KVM (Intel i7):
 - ✅ Ephemeral SSH keys (per-boot)
 - ✅ OpenClaw 2026.x validated running inside VM
 - ✅ Native build tools (cmake, make, g++) for npm modules with native addons
+- ✅ **Warm Pool** — pre-boot N VMs, acquire instantly (zero boot latency)
+- ✅ **HTTP Control Server** — REST API for VM lifecycle (language-agnostic access)
 - 🔲 Pre-built images via GHCR
 - 🔲 GitHub Actions CI
 - 🔲 ARM64 / Apple Silicon support
