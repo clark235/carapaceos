@@ -42,55 +42,84 @@ jobs:
         run: node -e "import('./index.js').then(m => console.log('Exports OK:', Object.keys(m).join(', ')))"
 
   doctor:
-    name: Doctor (host capability check)
-    runs-on: ubuntu-latest
+    name: Doctor (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+            qemu_pkg: qemu-system-x86
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            qemu_pkg: qemu-system-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install QEMU
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 genisoimage
+      - name: Install QEMU (${{ matrix.arch }})
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.qemu_pkg }} genisoimage
       - run: npm ci --ignore-scripts
-      - name: Run doctor
+      - name: Run doctor (${{ matrix.arch }})
         run: node lib/doctor.js || true  # non-fatal: reports what's missing
 
   # Integration test: build image + boot + run command
   # Only runs on push to main (slow: ~5 min)
   integration:
-    name: Integration (build + boot)
+    name: Integration (${{ matrix.arch }})
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+            qemu_pkg: qemu-system-x86 qemu-utils
+            image_suffix: ''
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            qemu_pkg: qemu-system-arm qemu-utils
+            image_suffix: '-arm64'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install QEMU + tools
+      - name: Install QEMU + tools (${{ matrix.arch }})
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage wget
+          sudo apt-get install -y ${{ matrix.qemu_pkg }} genisoimage wget
           # Enable KVM if available
-          sudo modprobe kvm-intel 2>/dev/null || sudo modprobe kvm-amd 2>/dev/null || echo "KVM not available, will use TCG"
+          sudo modprobe kvm-intel 2>/dev/null || sudo modprobe kvm-amd 2>/dev/null || sudo modprobe kvm 2>/dev/null || echo "KVM not available, will use TCG"
       - run: npm ci --ignore-scripts
-      - name: Check for cached image
+      - name: Check for cached image (${{ matrix.arch }})
         id: cache-image
         uses: actions/cache@v4
         with:
           path: vm-image/carapaceos.qcow2
-          key: carapaceos-image-${{ hashFiles('vm-image/build-image.sh', 'vm-image/user-data.template') }}
-      - name: Build VM image
+          key: carapaceos-image-${{ matrix.arch }}-${{ hashFiles('vm-image/build-image.sh', 'vm-image/user-data.template') }}
+      - name: Build VM image (${{ matrix.arch }})
         if: steps.cache-image.outputs.cache-hit != 'true'
-        run: npm run build-image
+        run: |
+          # Select the right Alpine arch for the runner
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            export CARAPACE_ALPINE_ARCH=aarch64
+          else
+            export CARAPACE_ALPINE_ARCH=x86_64
+          fi
+          npm run build-image
         timeout-minutes: 15
-      - name: Integration test — boot + run node --version
+      - name: Integration test — boot + run node --version (${{ matrix.arch }})
         run: |
           node -e "
           import('./index.js').then(async ({ CarapaceRunner }) => {
             const runner = new CarapaceRunner({ image: './vm-image/carapaceos.qcow2', verbose: true });
             await runner.boot();
-            const result = await runner.run('node --version && echo CARAPACE_OK');
+            const result = await runner.run('node --version && uname -m && echo CARAPACE_OK');
             await runner.shutdown();
             if (!result.stdout.includes('CARAPACE_OK')) {
               console.error('Integration test FAILED:', result);

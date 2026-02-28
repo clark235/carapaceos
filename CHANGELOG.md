@@ -7,6 +7,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.1] — 2026-02-28
+
+### Added
+
+- **ARM64 CI matrix** — `ubuntu-24.04-arm` runners added to both `doctor` and `integration` jobs in `.github/workflows/ci.yml`
+  - Doctor job: validates QEMU binary on x86_64 and arm64 in parallel
+  - Integration job: builds and boots VM on both architectures with correct QEMU binary
+  - Cache key is now arch-scoped (`carapaceos-image-{arch}-{hash}`) to prevent cross-arch cache pollution
+  - Uses `CARAPACE_ALPINE_ARCH=aarch64` env var to select the aarch64 Alpine ISO on ARM runners
+
+- **`CARAPACE_ALPINE_ARCH` env override** in `vm-image/build-image.sh`
+  - Supports `x86_64` (default) and `aarch64`
+  - Selects correct Alpine ISO and QEMU boot hints automatically
+  - Validates arch value; exits non-zero on unknown arch
+  - Prints target arch + correct `qemu-system-*` boot command in output
+
+### Changed
+
+- `build-image.sh` boot summary now prints arch-specific `qemu-system-aarch64` command on ARM builds
+
+---
+
 ## [0.2.0] — 2026-02-26
 
 ### Added
@@ -121,5 +143,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+[0.2.1]: https://github.com/clark235/carapaceos/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/clark235/carapaceos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/clark235/carapaceos/releases/tag/v0.1.0

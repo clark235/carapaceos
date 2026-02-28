@@ -1,6 +1,6 @@
 {
   "name": "carapaceos-runner",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Programmatic API for booting and running tasks in isolated CarapaceOS VMs. Lightweight Alpine Linux substrate for AI agents.",
   "type": "module",
   "main": "index.js",
@@ -66,7 +66,8 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "os": ["linux", "darwin"],
-  "peerDependencies": {},
-  "dependencies": {}
+  "os": [
+    "linux",
+    "darwin"
+  ]
 }

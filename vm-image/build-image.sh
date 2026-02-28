@@ -12,13 +12,24 @@ BUILD_DIR="$SCRIPT_DIR/build"
 OUTPUT="$SCRIPT_DIR/carapaceos.qcow2"
 ALPINE_VERSION="3.21"
 ALPINE_RELEASE="3.21.3"
-ALPINE_ARCH="x86_64"
+# Allow arch override for multi-arch CI (e.g., CARAPACE_ALPINE_ARCH=aarch64 for ARM64 runners)
+ALPINE_ARCH="${CARAPACE_ALPINE_ARCH:-x86_64}"
 ALPINE_ISO="alpine-virt-${ALPINE_RELEASE}-${ALPINE_ARCH}.iso"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/${ALPINE_ARCH}/${ALPINE_ISO}"
 DISK_SIZE="2G"
 
+# Validate supported architectures
+case "$ALPINE_ARCH" in
+  x86_64|aarch64) ;;
+  *)
+    echo "❌ Unsupported CARAPACE_ALPINE_ARCH: $ALPINE_ARCH (supported: x86_64, aarch64)"
+    exit 1
+    ;;
+esac
+
 echo "🦞 CarapaceOS Image Builder"
 echo "==========================="
+echo "🏗️  Target arch: $ALPINE_ARCH"
 
 # Clean build dir
 rm -rf "$BUILD_DIR"
@@ -103,15 +114,24 @@ SETUP
 
 chmod +x "$BUILD_DIR/agent-setup.sh"
 
+if [ "$ALPINE_ARCH" = "aarch64" ]; then
+  QEMU_BIN="qemu-system-aarch64"
+  QEMU_MACHINE="-M virt -cpu cortex-a57 -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd"
+else
+  QEMU_BIN="qemu-system-x86_64"
+  QEMU_MACHINE="-M pc"
+fi
+
 echo ""
 echo "✅ Build artifacts ready in $BUILD_DIR"
 echo "📀 Disk image: $OUTPUT"
+echo "🏗️  Alpine arch: $ALPINE_ARCH"
 echo ""
 echo "To install Alpine into the image (interactive):"
-echo "  qemu-system-x86_64 -m 512 -cdrom $SCRIPT_DIR/$ALPINE_ISO \\"
+echo "  $QEMU_BIN $QEMU_MACHINE -m 512 -cdrom $SCRIPT_DIR/$ALPINE_ISO \\"
 echo "    -drive file=$OUTPUT,if=virtio -boot d -nographic"
 echo ""
 echo "To boot the installed image:"
-echo "  qemu-system-x86_64 -m 512 -drive file=$OUTPUT,if=virtio \\"
+echo "  $QEMU_BIN $QEMU_MACHINE -m 512 -drive file=$OUTPUT,if=virtio \\"
 echo "    -nographic -netdev user,id=net0,hostfwd=tcp::2222-:22 \\"
 echo "    -device virtio-net,netdev=net0"
