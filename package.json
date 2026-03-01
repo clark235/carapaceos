@@ -39,6 +39,9 @@
     "fetch-image": "node lib/image-fetch.js",
     "fetch-image:check": "node lib/image-fetch.js --check",
     "serve": "node lib/control-server.js",
+    "release": "node scripts/release.js",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "prepublishOnly": "node -e \"import('./index.js').then(m => console.log('export check OK:', Object.keys(m)))\""
   },
   "keywords": [

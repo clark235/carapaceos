@@ -1,0 +1,157 @@
+name: Publish to npm
+
+# Triggers:
+#   - When a GitHub Release is published (tag like v0.3.0)
+#   - Manual trigger for pre-releases / dry-runs
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'npm dist-tag (e.g. latest, next, beta)'
+        required: false
+        default: 'latest'
+      dry_run:
+        description: 'Dry run (no actual publish)'
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    name: Publish carapaceos-runner to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write   # for npm provenance
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies (no postinstall scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Validate package
+        run: |
+          echo "📦 Package info:"
+          node -e "import('./package.json', { assert: { type: 'json' } }).then(m => {
+            const p = m.default;
+            console.log('  name:', p.name);
+            console.log('  version:', p.version);
+            console.log('  main:', p.main);
+            console.log('  exports:', Object.keys(p.exports).length, 'entry points');
+            console.log('  files:', p.files.length, 'patterns');
+          })"
+
+      - name: Check exports integrity
+        run: |
+          node -e "
+            import('./index.js').then(m => {
+              console.log('✅ Export check OK:', Object.keys(m).join(', '));
+            }).catch(e => {
+              console.error('❌ Export check failed:', e.message);
+              process.exit(1);
+            });
+          "
+
+      - name: Lint package files list
+        run: |
+          # Confirm key files exist
+          files=("index.js" "lib/agent-runner.js" "lib/warm-pool.js" "lib/control-server.js" "lib/cli.js" "lib/doctor.js" "lib/image-fetch.js" "lib/seed-iso.js")
+          for f in "${files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Missing required file: $f"
+              exit 1
+            fi
+            echo "✓ $f"
+          done
+
+      - name: Check version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          PKG_VERSION=$(node -e "import('./package.json', { assert: { type: 'json' } }).then(m => process.stdout.write(m.default.version))")
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          # Strip leading 'v' from tag
+          EXPECTED="v${PKG_VERSION}"
+          if [ "${RELEASE_TAG}" != "${EXPECTED}" ]; then
+            echo "❌ Version mismatch: package.json says '${PKG_VERSION}' but release tag is '${RELEASE_TAG}'"
+            echo "   Expected tag: ${EXPECTED}"
+            exit 1
+          fi
+          echo "✅ Version matches: ${PKG_VERSION} = ${RELEASE_TAG}"
+
+      - name: Determine dist-tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Pre-release tags (v0.3.0-beta.1) → "next"; stable → "latest"
+            TAG_NAME="${{ github.event.release.tag_name }}"
+            if [[ "$TAG_NAME" =~ -[a-zA-Z] ]]; then
+              echo "dist_tag=next" >> $GITHUB_OUTPUT
+            else
+              echo "dist_tag=latest" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "dist_tag=${{ github.event.inputs.tag || 'latest' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Dry run publish
+        if: github.event.inputs.dry_run == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "🧪 DRY RUN — no actual publish"
+          npm publish --dry-run --tag ${{ steps.tag.outputs.dist_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm (with provenance)
+        if: github.event_name == 'release' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "🚀 Publishing carapaceos-runner@$(node -e "import('./package.json', { assert: { type: 'json' } }).then(m => process.stdout.write(m.default.version))") to npm..."
+          npm publish --provenance --access public --tag ${{ steps.tag.outputs.dist_tag }}
+          echo "✅ Published!"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Post-publish verification
+        if: github.event_name == 'release' && github.event.inputs.dry_run != 'true'
+        run: |
+          VERSION=$(node -e "import('./package.json', { assert: { type: 'json' } }).then(m => process.stdout.write(m.default.version))")
+          echo "Waiting 10s for npm registry propagation..."
+          sleep 10
+          # Check npm registry
+          PUBLISHED=$(npm view carapaceos-runner@${VERSION} version 2>/dev/null || echo "")
+          if [ "${PUBLISHED}" = "${VERSION}" ]; then
+            echo "✅ Confirmed on npm: carapaceos-runner@${VERSION}"
+          else
+            echo "⚠️  Not yet visible on npm (may take a few minutes)"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          VERSION=$(node -e "import('./package.json', { assert: { type: 'json' } }).then(m => process.stdout.write(m.default.version))" 2>/dev/null || echo "unknown")
+          echo "## 📦 npm Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | \`carapaceos-runner\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Version | \`${VERSION}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Dist-tag | \`${{ steps.tag.outputs.dist_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Provenance | ✅ GitHub OIDC |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Install:" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "npm install carapaceos-runner" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Dry run completed. No package published." >> $GITHUB_STEP_SUMMARY
+          fi

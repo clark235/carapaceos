@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — v0.3.0 (upcoming)
+
+### Added
+
+- **npm publish workflow** (`.github/workflows/publish-npm.yml`) — automated npm registry publish on GitHub Release
+  - Version validation: confirms `package.json` version matches the release tag
+  - npm provenance via GitHub OIDC (`--provenance`) for supply-chain transparency
+  - Pre-release tags (e.g. `v0.3.0-beta.1`) auto-route to `next` dist-tag
+  - Dry-run mode for testing publish without registry write
+  - Post-publish verification: polls npm registry to confirm version is live
+
+- **Release script** (`scripts/release.js`) — local release automation
+  - `npm run release patch|minor|major` or explicit version (`0.3.0-beta.1`)
+  - Guards: clean git tree check, duplicate tag detection
+  - Auto-bumps `package.json` and inserts CHANGELOG section skeleton
+  - `--dry-run` mode: shows all steps without modifying anything
+  - `--push` flag: pushes branch + tag, prints next steps for GitHub Release
+
+---
+
 ## [0.2.1] — 2026-02-28
 
 ### Added
