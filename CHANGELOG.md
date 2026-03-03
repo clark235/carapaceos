@@ -7,7 +7,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — v0.3.0 (upcoming)
+## [0.4.0] — 2026-03-03
+
+### Added
+
+- **VM Checkpoint/Restore (Snapshot API)** — save and restore VM state mid-task via QEMU QMP
+  - `POST /vms/:id/snapshots` — save a named checkpoint (body: `{ name }`)
+    - Returns: `{ vmId, snapshot: { name, timestamp } }`
+    - Names are sanitized (special chars → `_`)
+  - `GET /vms/:id/snapshots` — list all snapshots for a VM
+    - Returns: `{ vmId, snapshots: [{ name, vmSize, date, clockMs }] }`
+  - `POST /vms/:id/snapshots/:snap/restore` — roll back VM state to a named checkpoint
+    - All changes made after the snapshot are discarded
+    - Returns: `{ vmId, snapshot }`
+  - `DELETE /vms/:id/snapshots/:snap` — remove a saved snapshot from the overlay
+  - QEMU boot args now include `-qmp unix:<path>,server=on,wait=off` for QMP socket
+  - `CarapaceRunner._qmp(execute, args)` — internal QMP protocol client (JSON over Unix socket, handles capability negotiation handshake)
+  - `CarapaceRunner.saveSnapshot(name)` — save VM checkpoint via `human-monitor-command savevm`
+  - `CarapaceRunner.restoreSnapshot(name)` — restore via `loadvm` + 1s settle delay
+  - `CarapaceRunner.listSnapshots()` — reads snapshot table from `qemu-img info --output=json`
+  - `CarapaceRunner.deleteSnapshot(name)` — removes snapshot via `qemu-img snapshot -d`
+  - Prometheus metrics: `carapace_snapshot_total`, `carapace_restore_total`, `carapace_snapshot_errors_total`
+  - 14 new unit tests in `test-control-server.js` (now 48 total, all green)
+
+- **File transfer via HTTP control server** — upload files into VMs and download results out
+  - `POST /vms/:id/upload` — send a file into a running VM (body: `{ content, path, encoding? }`)
+    - `content`: base64 (default) or utf8 string
+    - `path`: absolute destination path inside VM (e.g. `/home/agent/workspace/script.js`)
+    - Returns: `{ vmId, path, bytes }`
+  - `GET /vms/:id/download?path=...` — retrieve a file from a running VM
+    - Returns: `{ vmId, path, bytes, encoding: 'base64', content }`
+    - Content is always base64-encoded (safe for binary files)
+  - Host-side temp files are created and immediately cleaned up (no leakage)
+  - `upload` and `download` now tracked in Prometheus metrics (`carapace_upload_total`, `carapace_download_total`, `carapace_transfer_errors_total`)
+  - 11 unit tests covering upload/download lifecycle (34 total before snapshot tests)
+
+---
+
+## [0.3.0] — 2026-03-02
 
 ### Added
 

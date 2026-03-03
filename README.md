@@ -252,6 +252,12 @@ node lib/control-server.js ./vm-image/carapaceos.qcow2 --port=7375 --pool=2
 | POST | `/vms/acquire` | Acquire a warm VM → `{ vmId }` |
 | POST | `/vms/:id/run` | Run command in VM → `{ stdout, stderr, code }` |
 | POST | `/vms/:id/pipeline` | Run multiple commands in sequence |
+| POST | `/vms/:id/upload` | Upload file into VM (body: `{ content, path, encoding? }`) |
+| GET | `/vms/:id/download?path=` | Download file from VM → `{ content (base64), bytes }` |
+| POST | `/vms/:id/snapshots` | Save VM checkpoint (body: `{ name }`) |
+| GET | `/vms/:id/snapshots` | List saved checkpoints |
+| POST | `/vms/:id/snapshots/:snap/restore` | Roll back VM to checkpoint |
+| DELETE | `/vms/:id/snapshots/:snap` | Delete a checkpoint |
 | POST | `/vms/:id/release` | Destroy VM + refill pool |
 | GET | `/pool/status` | Pool stats |
 | POST | `/pool/resize` | Resize warm pool |
@@ -266,6 +272,22 @@ const result = await fetch(`http://127.0.0.1:7375/vms/${vmId}/run`, {
   body: JSON.stringify({ command: 'node --version' }),
 }).then(r => r.json());
 // → { stdout: 'v22.15.1', stderr: '', code: 0, duration: 155 }
+
+// Checkpoint/restore — save state before risky mutations
+await fetch(`http://127.0.0.1:7375/vms/${vmId}/snapshots`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'before-npm-install' }),
+});
+
+await fetch(`http://127.0.0.1:7375/vms/${vmId}/run`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ command: 'npm install --save-dev some-risky-package' }),
+});
+
+// Something went wrong? Roll back instantly:
+await fetch(`http://127.0.0.1:7375/vms/${vmId}/snapshots/before-npm-install/restore`, { method: 'POST' });
 
 await fetch(`http://127.0.0.1:7375/vms/${vmId}/release`, { method: 'POST' });
 ```
@@ -283,9 +305,11 @@ await fetch(`http://127.0.0.1:7375/vms/${vmId}/release`, { method: 'POST' });
 - ✅ Native build tools (cmake, make, g++) for npm modules with native addons
 - ✅ **Warm Pool** — pre-boot N VMs, acquire instantly (zero boot latency)
 - ✅ **HTTP Control Server** — REST API for VM lifecycle (language-agnostic access)
+- ✅ **File transfer** — upload/download files in/out of VMs via HTTP
+- ✅ **Checkpoint/Restore** — save VM state mid-task, roll back on failure (QMP snapshots)
+- ✅ **ARM64 / Apple Silicon support** — auto-detects host arch, selects QEMU binary
+- ✅ **GitHub Actions CI** — unit tests + integration tests, ARM64 matrix
 - 🔲 Pre-built images via GHCR
-- 🔲 GitHub Actions CI
-- 🔲 ARM64 / Apple Silicon support
 - 🔲 Network isolation options (NAT vs isolated)
 
 ---

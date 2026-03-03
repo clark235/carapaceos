@@ -1,6 +1,6 @@
 {
   "name": "carapaceos-runner",
-  "version": "0.2.1",
+  "version": "0.4.0",
   "description": "Programmatic API for booting and running tasks in isolated CarapaceOS VMs. Lightweight Alpine Linux substrate for AI agents.",
   "type": "module",
   "main": "index.js",
