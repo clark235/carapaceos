@@ -207,11 +207,102 @@ Base image (carapaceos.qcow2) — read-only, shared
 
 ---
 
+## Network Isolation
+
+Control what the VM can access on the network. Four modes available:
+
+| Mode | Outbound Internet | SSH | Use Case |
+|------|:-:|:-:|----------|
+| `nat` (default) | ✅ | ✅ | General-purpose, npm install, git clone |
+| `isolated` | ❌ | ✅ | Untrusted code, sandboxed computation |
+| `allowlist` | Selective | ✅ | npm install from registry only |
+| `none` | ❌ | ❌ | Maximum isolation, seed-injected tasks |
+
+### Usage
+
+```javascript
+import { CarapaceRunner, runIsolated } from 'carapaceos-runner';
+
+// Fully isolated — no network, only SSH
+const runner = new CarapaceRunner({
+  image: './carapaceos.qcow2',
+  networkMode: 'isolated',
+});
+await runner.boot();
+await runner.run('node -e "console.log(1+1)"'); // works
+await runner.run('curl https://evil.com');        // blocked
+await runner.shutdown();
+
+// Allowlist — only specific hosts reachable
+const runner2 = new CarapaceRunner({
+  image: './carapaceos.qcow2',
+  networkMode: 'allowlist',
+  networkAllow: [
+    { host: 'registry.npmjs.org', port: 443 },
+    { host: 'github.com', port: 443 },
+  ],
+  dnsServer: '8.8.8.8', // optional
+});
+
+// One-liner with isolation
+const result = await runIsolated('node -e "console.log(42)"', {
+  image: './carapaceos.qcow2',
+  networkMode: 'isolated',
+});
+```
+
+### CLI
+
+```bash
+# Run in a fully isolated VM (no outbound network)
+carapace-run --network isolated "node -e 'console.log(42)'"
+
+# Allow only npm registry access
+carapace-run --network allowlist \
+  --allow registry.npmjs.org:443 \
+  --allow github.com:443 \
+  "npm install express"
+```
+
+### Control Server
+
+```bash
+# Start with isolated VMs
+node lib/control-server.js ./carapaceos.qcow2 --network=isolated
+
+# Start with allowlist
+node lib/control-server.js ./carapaceos.qcow2 \
+  --network=allowlist \
+  --allow=registry.npmjs.org:443 \
+  --dns=8.8.8.8
+```
+
+The `/health` endpoint reports the active network configuration:
+
+```json
+{
+  "network": {
+    "mode": "allowlist",
+    "allowlist": ["registry.npmjs.org:443"],
+    "dns": "8.8.8.8"
+  }
+}
+```
+
+### How It Works
+
+- **`nat`**: Standard QEMU SLIRP user-mode NAT. Guest can reach the internet.
+- **`isolated`**: QEMU `restrict=on` blocks all guest-initiated outbound connections. SSH works because the host-forward is a host-side binding, not guest-initiated.
+- **`allowlist`**: `restrict=on` + per-entry `guestfwd` rules. Each allowed `host:port` gets a QEMU SLIRP-internal IP address (10.0.2.100+) that proxies through to the real host.
+- **`none`**: No network device attached to the VM at all.
+
+---
+
 ## Security
 
 See [SAFETY.md](SAFETY.md) for security considerations. Key points:
 
-- VMs are network-isolated (no host network by default)
+- VMs support configurable network isolation (isolated, allowlist, or none)
 - SSH key is ephemeral (generated fresh per boot, never stored)
 - Overlay images are destroyed on shutdown
 - KVM isolation (hardware virtualization boundary)
@@ -309,8 +400,8 @@ await fetch(`http://127.0.0.1:7375/vms/${vmId}/release`, { method: 'POST' });
 - ✅ **Checkpoint/Restore** — save VM state mid-task, roll back on failure (QMP snapshots)
 - ✅ **ARM64 / Apple Silicon support** — auto-detects host arch, selects QEMU binary
 - ✅ **GitHub Actions CI** — unit tests + integration tests, ARM64 matrix
+- ✅ **Network isolation** — nat, isolated, allowlist, and none modes with full test coverage
 - 🔲 Pre-built images via GHCR
-- 🔲 Network isolation options (NAT vs isolated)
 
 ---
 

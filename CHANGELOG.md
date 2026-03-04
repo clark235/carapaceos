@@ -7,6 +7,58 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.0] — 2026-03-04
+
+### Added
+
+- **Network isolation modes** — configurable VM network access for security-sensitive workloads
+  - **`nat`** (default) — full outbound internet access via QEMU SLIRP NAT (existing behavior, unchanged)
+  - **`isolated`** — no outbound network; guest cannot reach any external hosts
+    - Uses QEMU `restrict=on` to block all guest-initiated connections
+    - SSH still works (host-side port forward, not guest-initiated)
+    - Ideal for untrusted code execution, sandboxed agent tasks
+  - **`allowlist`** — restricted mode with selective outbound access
+    - Combines `restrict=on` with `guestfwd` rules per allowed destination
+    - Each `networkAllow` entry (`{ host, port }`) maps to a QEMU SLIRP guest-visible IP (`10.0.2.100+i`)
+    - Example: allow only `registry.npmjs.org:443` and `github.com:443`
+    - Optional `dnsServer` override for DNS resolution in restricted mode
+  - **`none`** — no network device at all (maximum isolation, SSH unavailable)
+    - Useful for pure computation tasks injected via seed ISO
+  - Validation: invalid `networkMode` throws at construction; `allowlist` requires non-empty `networkAllow[]`
+
+- **CarapaceRunner API changes:**
+  - `opts.networkMode` — `'nat'` | `'isolated'` | `'allowlist'` | `'none'` (default: `'nat'`)
+  - `opts.networkAllow` — `Array<{ host: string, port: number }>` for allowlist mode
+  - `opts.dnsServer` — optional DNS server IP override
+  - `runner.info.network` — `{ mode, allowlist?, dns? }` in the info object
+  - `runner._buildNetArgs()` — internal method generating QEMU network CLI args
+
+- **WarmPool network forwarding** — pool passes `networkMode`, `networkAllow`, `dnsServer` to each spawned runner
+  - All VMs in a pool share the same network policy
+  - Constructor accepts: `opts.networkMode`, `opts.networkAllow`, `opts.dnsServer`
+
+- **ControlServer network config:**
+  - Constructor accepts: `opts.networkMode`, `opts.networkAllow`, `opts.dnsServer`
+  - `GET /health` now includes `network: { mode, allowlist?, dns? }` in response
+  - CLI flags: `--network=MODE`, `--allow=HOST:PORT` (repeatable), `--dns=IP`
+  - CLI help text updated with network mode documentation
+
+- **CLI (`carapace-run`) network flags:**
+  - `--network <mode>` — set network isolation mode
+  - `--allow <host:port>` — add allowlist entry (repeatable, requires `--network allowlist`)
+  - Help text updated with network examples
+
+- **34 new unit tests** in `test-network.js` (now 82 total across all test suites, all green)
+  - Constructor validation (9 tests): valid modes, invalid modes, allowlist requirements
+  - `_buildNetArgs()` (7 tests): QEMU arg generation for all modes + edge cases
+  - `info` property (5 tests): network info exposure
+  - WarmPool forwarding (4 tests): option propagation
+  - ControlServer (2 tests): storage + defaults
+  - Health endpoint (4 tests): HTTP API network config in response
+  - Edge cases (3 tests): missing host/port, sequential IP allocation for many entries
+
+---
+
 ## [0.4.0] — 2026-03-03
 
 ### Added
